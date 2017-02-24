@@ -1,6 +1,6 @@
 # Project related #
 ###################
-*.cfg.*
+backup.mine.cfg
 /test
 
 # Compiled source #
