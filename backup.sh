@@ -6,9 +6,9 @@ PATH=/sbin:/bin:/usr/sbin:/usr/bin:/usr/local/sbin:/usr/local/bin
 ### FUNCTIONS ###
 
 log()
-{ 	# Provides the 'log' command to simultaneously log to
-	# STDOUT and the log file with a single command
-	# NOTE: Use "" rather than \n unless you want a COMPLETELY blank line (no timestamp)
+{   # Provides the 'log' command to simultaneously log to
+    # STDOUT and the log file with a single command
+    # NOTE: Use "" rather than \n unless you want a COMPLETELY blank line (no timestamp)
     echo -e "$(date +'%Y-%m-%d_%T')" "$1" >> "${LOGFILE}"
     if [ "$2" != "noecho" ]; then
         echo -e "$1"
@@ -16,7 +16,7 @@ log()
 }
 
 include_file ()
-{	# check stated file and include if present
+{   # check stated file and include if present
     FILE="$( realpath ${1} )"
     if [ ! -f "${FILE}" ]; then
         echo "${FILE} is not present. Aborting..."
@@ -27,7 +27,7 @@ include_file ()
 }
 
 require_command ()
-{	# check if the needed command is present
+{   # check if the needed command is present
     COMMAND="$(command -v ${1})"
     if [ -z ${COMMAND} ]; then
         echo "${1} seems not available. This script can not be executed without it."
@@ -38,7 +38,7 @@ require_command ()
 }
 
 get_running_containers ()
-{ 	# get a list of all running containers and put the names into an array
+{   # get a list of all running containers and put the names into an array
     unset DOCKER
     DOCKER="$(require_command docker) ps"
 
@@ -46,7 +46,7 @@ get_running_containers ()
 }
 
 get_container_volumes ()
-{ 	# use ${1} as container-name and extract mounted volumes
+{   # use ${1} as container-name and extract mounted volumes
     CONTAINER_NAME="${1}"
     unset DOCKER
     DOCKER="$(require_command docker) inspect"
@@ -55,7 +55,7 @@ get_container_volumes ()
 }
 
 create_dir ()
-{ 	# use ${1} as directory and check if it is present
+{   # use ${1} as directory and check if it is present
     DIR="${1}"
     if [ ! -d ${DIR} ]; then
         mkdir -p ${DIR}
@@ -74,7 +74,7 @@ backup_check ()
 }
 
 backup_run ()
-{ 	# use ${1} as destination and ${2} as backup-source 
+{   # use ${1} as destination and ${2} as backup-source 
     # return status code at the end to check if backup was successfull
     DESTINATION="${1}"
     SOURCE="${2}"
