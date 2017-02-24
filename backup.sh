@@ -1,9 +1,22 @@
 #!/bin/bash
 
+# Ensure that all possible binary paths are checked
+PATH=/sbin:/bin:/usr/sbin:/usr/bin:/usr/local/sbin:/usr/local/bin
+
 ### FUNCTIONS ###
 
+log()
+{ 	# Provides the 'log' command to simultaneously log to
+	# STDOUT and the log file with a single command
+	# NOTE: Use "" rather than \n unless you want a COMPLETELY blank line (no timestamp)
+    echo -e "$(date +'%Y-%m-%d_%T')" "$1" >> "${LOGFILE}"
+    if [ "$2" != "noecho" ]; then
+        echo -e "$1"
+    fi
+}
+
 include_file ()
-{ # check stated file and include if present
+{	# check stated file and include if present
     FILE="$( realpath ${1} )"
     if [ ! -f "${FILE}" ]; then
         echo "${FILE} is not present. Aborting..."
@@ -14,7 +27,7 @@ include_file ()
 }
 
 require_command ()
-{ # check if the needed command is present
+{	# check if the needed command is present
     COMMAND="$(command -v ${1})"
     if [ -z ${COMMAND} ]; then
         echo "${1} seems not available. This script can not be executed without it."
@@ -25,38 +38,47 @@ require_command ()
 }
 
 get_running_containers ()
-{ # get a list of all running containers and put the names into an array
+{ 	# get a list of all running containers and put the names into an array
+    unset DOCKER
     DOCKER="$(require_command docker) ps"
 
     ${DOCKER} --format '{{.Names}}' 
 }
 
 get_container_volumes ()
-{ # use ${1} as container-name and extract mounted volumes
+{ 	# use ${1} as container-name and extract mounted volumes
     CONTAINER_NAME="${1}"
+    unset DOCKER
     DOCKER="$(require_command docker) inspect"
 
     ${DOCKER} --format '{{ range .Mounts }}{{ .Source }} {{ end }}' ${CONTAINER_NAME}
 }
 
 create_dir ()
-{ # use ${1} as directory and check if it is present
+{ 	# use ${1} as directory and check if it is present
     DIR="${1}"
     if [ ! -d ${DIR} ]; then
         mkdir -p ${DIR}
     fi
 }
 
-backup_directory ()
-{ # use ${1} as destination and ${2} as backup-source 
+backup_check ()
+{   # check if source dir is available
+    # use ${1} as source
+    SOURCE="${1}"
+
+	if [ ! -r ${SOURCE} ]; then
+        log "${SOURCE} is not accessible. Aborting..."
+        exit 1
+	fi
+}
+
+backup_run ()
+{ 	# use ${1} as destination and ${2} as backup-source 
+    # return status code at the end to check if backup was successfull
     DESTINATION="${1}"
     SOURCE="${2}"
     
-    if [ ! -r ${SOURCE} ] || [ ! $($(require_command touch) ${DESTINATION}) ]; then
-        echo "Either source or desitnation file is not accessible. Aborting..."
-        exit 1
-    fi
-
     TAR="$(require_command tar)"
     ARGUMENTS="-cpzf"
     ${TAR} ${ARGUMENTS} ${DESTINATION} ${SOURCE}
@@ -137,15 +159,65 @@ fi
 unset RUNNING_CONTAINERS
 RUNNING_CONTAINERS=($(get_running_containers))
 
-unset container
-for container in ${RUNNING_CONTAINERS[@]}; do
+unset CONTAINER 
+for CONTAINER in ${RUNNING_CONTAINERS[@]}; do
+	# get volumes
     unset VOLUMES
-    VOLUMES=($(get_container_volumes "${container}"))
-    
-    #create_dir "${LOCALDIR}"
+    VOLUMES=($(get_container_volumes "${CONTAINER}"))
 
-    echo ${container}
-    echo ${VOLUMES[@]}
+	# stop container to avoid corrupt data
+	unset DOCKER
+	DOCKER="$(require_command docker) stop"
+	${DOCKER} ${CONTAINER}
+    if [ ! $( ${DOCKER} ${CONTAINER} && $(require_command echo) ${?} ) -eq 0 ]; then
+        log "Stopping ${CONTAINER} FAILED. Skipping..."
+        continue
+    fi
+
+	for BUP in ${VOLUMES[@]}; do
+		# check if the volume-dir is accessible. If not, skip.
+		if [ ! $( backup_check ${BUP} && $(require_command) echo ${?} ) -eq 0 ]; then
+			log "Can not access ${BUP}! Skipping..."
+			continue
+		fi
+		
+		# prepare name of tarfile
+		NAME=$( $(require_command echo) "${BUP}" | $(require_command -v sed) 's#\/#_#g' )
+		unset TARFILE
+		TARFILE="${BACKUPDIR}/${NAME}".tgz     
+
+		# create backup, finally
+		if [ ! $( backup_run ${NAME} ${BUP} && $(require_command echo) ${?} ) -eq 0 ]; then
+			log "Backup of ${BUP} FAILED."
+		else
+			log "Backup of ${BUP} was SUCESSFULL."
+		fi
+	done
+
+	# bring container up again
+	unset DOCKER
+    DOCKER="$(require_command docker) start"
+    if [ ! $( ${DOCKER} ${CONTAINER} && $(require_command echo) ${?} ) -eq 0 ]; then
+        log "Starting ${CONTAINER} FAILED."
+    fi
+    
 done
 
-### FINISHED BACKUP ROUTINE
+### FINISHED BACKUP ROUTINE ###
+
+ENDTIME=$(date +%s)
+DURATION=$((ENDTIME - STARTTIME))
+log "All done. Backup and transfer completed in ${DURATION} seconds\n"
+
+if [ $(echo ${MAILRCPT}) ]; then
+    log "Sending logfile via mail"
+    {
+        echo To: ${MAILRCPT}
+        echo Subject: Backup finished for ${HOSTNAME}
+        echo
+        cat ${LOGFILE}
+    } | ssmtp ${MAILRCPT}
+    rm -f ${LOGFILE}
+else
+    log "No email recipient set. Won't send logifle via mail."
+fi
