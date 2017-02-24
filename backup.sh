@@ -112,6 +112,11 @@ include_file "${CONFIG}"
 
 ### CHECKS ###
 
+BACKUPDATE="$(date -u +%Y-%m-%d-%H%M)"
+STARTTIME="$(date +%s)"
+DATEDIR="${HOSTNAME}/${BACKUPDATE}"
+BACKUPDIR="${LOCALDIR}${DATEDIR}"
+
 # This section checks for all of the binaries used in the backup
 if [ ! -z ${MAILRCPT} ]; then
     BINARIES=( ssmtp mkdir cat cd command date dirname echo find openssl pwd realpath rm rsync scp ssh tar sed )
@@ -128,14 +133,18 @@ for BINARY in "${BINARIES[@]}"; do
 done
 
 # Check if the backup folders exist and are writeable
-if [ ! -w "${LOCALDIR}" ]; then
-    log "${LOCALDIR} either doesn't exist or isn't writable"
+if [ ! -w "$( $(require_command dirname) ${LOCALDIR} )" ]; then
+    log "Parent directory of ${LOCALDIR} either doesn't exist or isn't writable"
     log "Either fix or replace the LOCALDIR setting"
     exit 1
-elif [ ! -w "${TEMPDIR}" ]; then
-    log "${TEMPDIR} either doesn't exist or isn't writable"
+elif [ ! -w "$( $(require_command dirname) ${TEMPDIR} )" ]; then
+    log "Parent directory of ${TEMPDIR} either doesn't exist or isn't writable"
     log "Either fix or replace the TEMPDIR setting"
     exit 1
+else
+    create_dir ${LOCALDIR}
+    create_dir ${TEMPDIR}
+    create_dir ${BACKUPDIR}
 fi
 
 # Check that SSH login to remote server is successful
@@ -161,6 +170,11 @@ RUNNING_CONTAINERS=($(get_running_containers))
 
 unset CONTAINER 
 for CONTAINER in ${RUNNING_CONTAINERS[@]}; do
+    # define new backupdir for current container
+    unset BACKUPDIRCONTAINER
+    BACKUPDIRCONTAINER="${BACKUPDIR}/${CONTAINER}"
+    create_dir "${BACKUPDIRCONTAINER}"
+
 	# get volumes
     unset VOLUMES
     VOLUMES=($(get_container_volumes "${CONTAINER}"))
@@ -169,25 +183,25 @@ for CONTAINER in ${RUNNING_CONTAINERS[@]}; do
 	unset DOCKER
 	DOCKER="$(require_command docker) stop"
 	${DOCKER} ${CONTAINER}
-    if [ ! $( ${DOCKER} ${CONTAINER} && $(require_command echo) ${?} ) -eq 0 ]; then
+    if [ ! "$( ${DOCKER} ${CONTAINER} &>/dev/null && $(require_command echo) ${?} )" -eq 0 ]; then
         log "Stopping ${CONTAINER} FAILED. Skipping..."
         continue
     fi
 
 	for BUP in ${VOLUMES[@]}; do
 		# check if the volume-dir is accessible. If not, skip.
-		if [ ! $( backup_check ${BUP} && $(require_command) echo ${?} ) -eq 0 ]; then
+		if [ ! "$( backup_check ${BUP} && $(require_command echo) ${?} )" -eq 0 ]; then
 			log "Can not access ${BUP}! Skipping..."
 			continue
 		fi
 		
 		# prepare name of tarfile
-		NAME=$( $(require_command echo) "${BUP}" | $(require_command -v sed) 's#\/#_#g' )
+		NAME="$( $(require_command echo) ${BUP} | $(require_command sed) 's#\/#_#g' )"
 		unset TARFILE
-		TARFILE="${BACKUPDIR}/${NAME}".tgz     
+		TARFILE="${BACKUPDIRCONTAINER}/${NAME}".tgz     
 
 		# create backup, finally
-		if [ ! $( backup_run ${NAME} ${BUP} && $(require_command echo) ${?} ) -eq 0 ]; then
+		if [ ! "$( backup_run ${TARFILE} ${BUP} && $(require_command echo) ${?} )" -eq 0 ]; then
 			log "Backup of ${BUP} FAILED."
 		else
 			log "Backup of ${BUP} was SUCESSFULL."
@@ -197,7 +211,7 @@ for CONTAINER in ${RUNNING_CONTAINERS[@]}; do
 	# bring container up again
 	unset DOCKER
     DOCKER="$(require_command docker) start"
-    if [ ! $( ${DOCKER} ${CONTAINER} && $(require_command echo) ${?} ) -eq 0 ]; then
+    if [ ! "$( ${DOCKER} ${CONTAINER} &>/dev/null && $(require_command echo) ${?} )" -eq 0 ]; then
         log "Starting ${CONTAINER} FAILED."
     fi
     
