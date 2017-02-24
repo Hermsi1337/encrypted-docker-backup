@@ -1,6 +1,7 @@
 # Project related #
 ###################
 *.cfg.*
+/test
 
 # Compiled source #
 ###################
