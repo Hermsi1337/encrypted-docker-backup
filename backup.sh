@@ -182,6 +182,9 @@ for CONTAINER in ${RUNNING_CONTAINERS[@]}; do
     BACKUPDIRCONTAINER="${BACKUPDIR}/${CONTAINER}"
     create_dir "${BACKUPDIRCONTAINER}"
 
+	# put directory in array for transferring 
+	BACKUPTRANSFER+=(${BACKUPDIRCONTAINER})
+
 	# get volumes
     unset VOLUMES
     VOLUMES=($(get_container_volumes "${CONTAINER}"))
@@ -209,10 +212,25 @@ for CONTAINER in ${RUNNING_CONTAINERS[@]}; do
 
 		# create backup, finally
 		if [ ! "$( backup_run ${TARFILE} ${BUP} && $(require_command echo) ${?} )" -eq 0 ]; then
-			log "Backup of ${BUP} FAILED."
+			log "Creating tar of ${BUP} FAILED."
 		else
-			log "Backup of ${BUP} was SUCESSFULL."
+			log "Creating tar of ${BUP} was SUCESSFULL."
 		fi
+
+		# encrypt tar file
+		log "Encrypting ${TARFILE}"
+		openssl enc -aes256 -in "${TARFILE}" -out "${TARFILE}".enc -pass pass:"${BACKUPPASS}" -md sha1
+		log "Encryption ${TARFILE} completed"
+
+		# put tarfile in array for transferring
+		# BACKUPTRANSFER+=("${TARFILE}.enc")
+
+		# Delete unencrypted tar
+		rm "${TARFILE}"
+
+		BACKUPSIZE=$( $(require_command du) -h "${TARFILE}".enc | $(require_command cut) -f1)
+		log "Backup of ${BUP} complete. Filesize: ${BACKUPSIZE}"; log ""
+
 	done
 
 	# bring container up again
@@ -221,7 +239,24 @@ for CONTAINER in ${RUNNING_CONTAINERS[@]}; do
     if [ ! "$( ${DOCKER} ${CONTAINER} &>/dev/null && $(require_command echo) ${?} )" -eq 0 ]; then
         log "Starting ${CONTAINER} FAILED."
     fi
-    
+done
+
+# Transfer to remote server
+log "Tranferring tar backup to remote server"
+
+log "Create remote Directory"
+REMOTEDIR="${REMOTEDIR}${DATEDIR}"
+
+ssh -p "${REMOTEPORT}" "${REMOTEUSER}"@"${REMOTESERVER}" "mkdir -p ${REMOTEDIR}"
+
+# Check if bandwidth limiting is enabled
+for TRANSFERBACKUP in ${BACKUPTRANSFER[@]}; do
+    if [ "${SCPLIMIT}" -gt 0 ]; then 
+        scp -rp -l "${SCPLIMIT}" -P "${REMOTEPORT}" "${TRANSFERBACKUP}" "${REMOTEUSER}"@"${REMOTESERVER}":"${REMOTEDIR}"
+    else
+        scp -rp -P "${REMOTEPORT}" "${TRANSFERBACKUP}" "${REMOTEUSER}"@"${REMOTESERVER}":"${REMOTEDIR}"
+    fi
+    log "Successfully transferred ${TRANSFERBACKUP}"; log ""
 done
 
 ### FINISHED BACKUP ROUTINE ###
