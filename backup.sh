@@ -209,10 +209,25 @@ for CONTAINER in ${RUNNING_CONTAINERS[@]}; do
 
 		# create backup, finally
 		if [ ! "$( backup_run ${TARFILE} ${BUP} && $(require_command echo) ${?} )" -eq 0 ]; then
-			log "Backup of ${BUP} FAILED."
+			log "Creating tar of ${BUP} FAILED."
 		else
-			log "Backup of ${BUP} was SUCESSFULL."
+			log "Creating tar of ${BUP} was SUCESSFULL."
 		fi
+
+		# encrypt tar file
+		log "Encrypting ${TARFILE}"
+		openssl enc -aes256 -in "${TARFILE}" -out "${TARFILE}".enc -pass pass:"${BACKUPPASS}" -md sha1
+		log "Encryption ${TARFILE} completed"
+
+		# put tarfile in array for transferring
+		BACKUPTRANSFER+=("${TARFILE}.enc")
+
+		# Delete unencrypted tar
+		rm "${TARFILE}"
+
+		BACKUPSIZE=$( $(require_command du) -h "${TARFILE}".enc | $(require_command cut) -f1)
+		log "Backup of ${BUP} complete. Filesize: ${BACKUPSIZE}"; log ""
+
 	done
 
 	# bring container up again
@@ -221,7 +236,6 @@ for CONTAINER in ${RUNNING_CONTAINERS[@]}; do
     if [ ! "$( ${DOCKER} ${CONTAINER} &>/dev/null && $(require_command echo) ${?} )" -eq 0 ]; then
         log "Starting ${CONTAINER} FAILED."
     fi
-    
 done
 
 ### FINISHED BACKUP ROUTINE ###
