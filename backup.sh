@@ -182,6 +182,9 @@ for CONTAINER in ${RUNNING_CONTAINERS[@]}; do
     BACKUPDIRCONTAINER="${BACKUPDIR}/${CONTAINER}"
     create_dir "${BACKUPDIRCONTAINER}"
 
+	# put directory in array for transferring 
+	BACKUPTRANSFER+=(${BACKUPDIRCONTAINER})
+
 	# get volumes
     unset VOLUMES
     VOLUMES=($(get_container_volumes "${CONTAINER}"))
@@ -220,7 +223,7 @@ for CONTAINER in ${RUNNING_CONTAINERS[@]}; do
 		log "Encryption ${TARFILE} completed"
 
 		# put tarfile in array for transferring
-		BACKUPTRANSFER+=("${TARFILE}.enc")
+		# BACKUPTRANSFER+=("${TARFILE}.enc")
 
 		# Delete unencrypted tar
 		rm "${TARFILE}"
@@ -236,6 +239,24 @@ for CONTAINER in ${RUNNING_CONTAINERS[@]}; do
     if [ ! "$( ${DOCKER} ${CONTAINER} &>/dev/null && $(require_command echo) ${?} )" -eq 0 ]; then
         log "Starting ${CONTAINER} FAILED."
     fi
+done
+
+# Transfer to remote server
+log "Tranferring tar backup to remote server"
+
+log "Create remote Directory"
+REMOTEDIR="${REMOTEDIR}${DATEDIR}"
+
+ssh -p "${REMOTEPORT}" "${REMOTEUSER}"@"${REMOTESERVER}" "mkdir -p ${REMOTEDIR}"
+
+# Check if bandwidth limiting is enabled
+for TRANSFERBACKUP in ${BACKUPTRANSFER[@]}; do
+    if [ "${SCPLIMIT}" -gt 0 ]; then 
+        scp -rp -l "${SCPLIMIT}" -P "${REMOTEPORT}" "${TRANSFERBACKUP}" "${REMOTEUSER}"@"${REMOTESERVER}":"${REMOTEDIR}"
+    else
+        scp -rp -P "${REMOTEPORT}" "${TRANSFERBACKUP}" "${REMOTEUSER}"@"${REMOTESERVER}":"${REMOTEDIR}"
+    fi
+    log "Successfully transferred ${TRANSFERBACKUP}"; log ""
 done
 
 ### FINISHED BACKUP ROUTINE ###
