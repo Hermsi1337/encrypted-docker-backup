@@ -168,6 +168,13 @@ fi
 unset RUNNING_CONTAINERS
 RUNNING_CONTAINERS=($(get_running_containers))
 
+# check if there are any containers to exclude
+if [ ! ${#EXCLUDE[@]} -eq 0 ]; then
+	for CONTAINER_TO_EXCLUDE in "${EXCLUDE[@]}"; do
+		RUNNING_CONTAINERS=(${RUNNING_CONTAINERS[@]//*${CONTAINER_TO_EXCLUDE}*})
+	done
+fi
+
 unset CONTAINER 
 for CONTAINER in ${RUNNING_CONTAINERS[@]}; do
     # define new backupdir for current container
