@@ -163,6 +163,18 @@ fi
 
 ### FINISHED CHECKS ###
 
+### BACKUP DELETION ##
+
+log "Checking for LOCAL backups to delete..."
+bash "${SCRIPTDIR}"/deleteoldbackups.sh --config "${CONFIG}"
+log ""
+
+log "Checking for REMOTE backups to delete..."
+bash "${SCRIPTDIR}"/deleteoldbackups.sh --config "${CONFIG}" --remote
+log ""
+
+### END OF BACKUP DELETION ###
+
 ### BACKUP ROUTINE ###
 
 unset RUNNING_CONTAINERS
@@ -196,6 +208,8 @@ for CONTAINER in ${RUNNING_CONTAINERS[@]}; do
     if [ ! "$( ${DOCKER} ${CONTAINER} &>/dev/null && $(require_command echo) ${?} )" -eq 0 ]; then
         log "Stopping ${CONTAINER} FAILED. Skipping..."
         continue
+    else
+        log "${CONTAINER} STOPPED successfully..."
     fi
 
 	for BUP in ${VOLUMES[@]}; do
@@ -222,9 +236,6 @@ for CONTAINER in ${RUNNING_CONTAINERS[@]}; do
 		openssl enc -aes256 -in "${TARFILE}" -out "${TARFILE}".enc -pass pass:"${BACKUPPASS}" -md sha1
 		log "Encryption ${TARFILE} completed"
 
-		# put tarfile in array for transferring
-		# BACKUPTRANSFER+=("${TARFILE}.enc")
-
 		# Delete unencrypted tar
 		rm "${TARFILE}"
 
@@ -238,7 +249,10 @@ for CONTAINER in ${RUNNING_CONTAINERS[@]}; do
     DOCKER="$(require_command docker) start"
     if [ ! "$( ${DOCKER} ${CONTAINER} &>/dev/null && $(require_command echo) ${?} )" -eq 0 ]; then
         log "Starting ${CONTAINER} FAILED."
+    else
+        log "${CONTAINER} IS UP AGAIN"
     fi
+
 done
 
 # Transfer to remote server
