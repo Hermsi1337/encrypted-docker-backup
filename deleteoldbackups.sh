@@ -181,7 +181,7 @@ runRemotely() {
     {
   		printf '%s\n' "set --"
   		cat "${CONFIG}" "${REMOTEHOSTNAME}" "${SCRIPTDIR}/deleteoldbackups.sh"
-	} | ssh -p "${REMOTEPORT}" "${REMOTEUSER}"@"${REMOTESERVER}" "cat | bash -x" 
+	} | ssh -p "${REMOTEPORT}" "${REMOTEUSER}"@"${REMOTESERVER}" "cat | bash" 
 
     rm /tmp/hostname
 }
